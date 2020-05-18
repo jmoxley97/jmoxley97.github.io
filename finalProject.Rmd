@@ -1,0 +1,280 @@
+---
+title: "finalProj"
+author: "Jesse Moxley"
+date: "5/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+1. Introduction and import dataset
+
+I will be working with a dataset containing information on players in the FIFA 2019 video game. FIFA is the international governing body of professional soccer, and the video game sharing its name contains ratings of professional players based on their real-life ability. My goal in this project is to assign ratings to players based on characteristics that are not typically associated with a player's soccer ability.
+
+If you would like to learn more about soccer and the game of FIFA, I invite you to check out the following links:
+
+Info on FIFA video game:
+https://en.wikipedia.org/wiki/FIFA_(video_game_series)
+https://www.ea.com/games/fifa/fifa-20/ratings/fifa-20-player-ratings-top-100
+https://www.fifa.com/who-we-are/
+
+Dataset used:
+https://www.kaggle.com/karangadiya/fifa19/data
+
+Some resources that helped me create this tutorial:
+https://www.kaggle.com/kernels?sortBy=votes&group=everyone&pageSize=20&language=R
+https://www.hcbravo.org/IntroDataSci/bookdown-notes/index.html
+https://datascienceplus.com/imputing-missing-data-with-r-mice-package/
+https://www.r-bloggers.com/random-forests-in-r/
+https://dataanalyticsblog.com/tag/partition-data-in-r/
+
+
+
+First, we must collect the data that will be used to make our predictions.
+
+```{r getData, message = FALSE, warning = FALSE}
+
+library("tidyverse")
+# read in csv of fifa data
+fifa_df <- read_csv("data.csv")
+# display the first 10 entities in the dataset
+head(fifa_df, 10)
+
+```
+
+So now we can see the main attributes of the dataset and that it contains a variety of relevant information about each player in the game. Under each attribute name is the datatype of the attribute, so for Name the datatype is character, age is double, there are even links to images included as type character as well. The values assigned to these attributes are based on the players' physical appearance and abilities in real-life and are intended to be as accurate as possible to represent each individual. The single most important attribute when judging a player's playing ability and their worth to a team is their overall rating. The goal of this project is to understand what are some factors that affect a player's overall score.
+
+
+2. What attributes affect playing skill?
+
+2.1: Height
+
+One relationship we could explore is if a player's height influences the overall rating of the player. In order to determine this, it will be helpful to create another column, including a player's height in inches in order to provide a numeric representation, instead of a character representation. Once we have done this, it will be easier to make a plot of height versus overall skill.
+
+```{r plot_height_overall, warning=FALSE, message=FALSE}
+
+# split the character string on the apostrophe(') character to get feet and inches
+heightStr <- strsplit(fifa_df$Height, '\'')
+# use sapply to get the character at the first and second index, corresponding to feet and inches
+heightInches <- as.numeric(sapply(heightStr, "[", 1)) * 12 + as.numeric(sapply(heightStr, "[", 2))
+
+# data pipeline
+fifa_df %>%
+  mutate(height_in = heightInches) %>%
+  select(Name, Overall, height_in) %>%
+  ggplot(mapping=aes(x=factor(height_in), y=Overall)) + geom_violin() +
+  labs(title = "Player Rating by Height", x="Height (inches)", y="Overall")
+# create a new column in the dataframe of height in inches
+fifa_df <- mutate(fifa_df, height_in = heightInches)
+
+```
+
+In this plot, one starts to get an idea of the distribution of overall rating based on the discrete numeric variable of height in inches. It seems quite evident that a player's rating is not dependent on the height of that player, as the rating for players at all heights seem to be fairly evenly distributed in overall rating, regardless of the value for height. Most heights seem to be normally distributed, except at the extremes of the height scale, where there are fewer datapoints. In order to test this theory more thoroughly, we will perform a linear regression to determine whether there is a relationship between height and overall rating and if this relationship is statistically significant. In order for this relationship to be statistically significant, the p-value must be less than the alpha of 0.05. If this is the case, then we reject the null hypothesis that height has no effect on the overall rating of a player. Here, we also notice that there is a value for "NA" on the x-axis, meaning we must have some missing height values in the dataset, which we will deal with later.
+
+```{r linear_regression_height}
+
+height_ovr_fit <- lm(Overall~height_in, data = fifa_df)
+broom::tidy(height_ovr_fit)
+
+```
+
+From this linear regression, however, we can see that on average in this dataset, for every additional 1 inch in height, the player's overall rating increases by roughly 0.1. Interestingly, this relationship is statistically significant because the p-value is 2.037e-7, which is less than the alpha value of 0.05. Therefore, we should reject the null hypothesis that there is no relationship between height and overall rating.
+
+
+What other attributes make a good soccer player?
+
+It is quite clear that attributes such as crossing, passing, finishing, ball control, etc. are attributes that directly contribute to a player's overall rating because these are soccer skills that are measures of a player's ability to play the game well. What are some other attributes that may contribute to a player's ability? Certainly, there are specific countries that have much more talented soccer stars, and for that reason they put together more talented teams for international play, and as a result, they win more World Cups. We can do a similar comparison as we did before, but now examining the relationship between a player's nationality and their overall rating in the game. However, this time, since there are so many countries included in the game, it would make sense to create a smaller sample size of countries to make the plot easier to understand.
+
+
+2.2: Nationality
+
+```{r plot_nationality_overall}
+
+# include only players from these specific countries
+country_filter_df <- filter(fifa_df, Nationality == "Argentina" | Nationality == "Spain" | Nationality == "France" | Nationality == "Algeria" | Nationality == "Serbia" |                                              Nationality == "Finland" | Nationality == "United States" | Nationality == "Korea Republic" | Nationality == "Ghana" | Nationality == "Honduras")
+country_filter_df %>%
+  ggplot(aes(x=factor(Nationality), y=Overall)) + geom_boxplot() +
+  labs(title="Overall rating by country", x="country", y="overall") +
+  theme(axis.text.x = element_text(angle = 30))
+
+
+```
+
+By comparing the distributions and ranges of countries, it is clear that some countries have a higher mean overall rating than other countries. Countries like Korea Republic and the United States have a peak in their distributions at lower values than countries such as Algeria and Croatia. I attempted to choose countries that I thought would represent a variety of distributions and ranges based on my knowledge of the country's international achievements in soccer. Again, let's take a closer look at the relationship by doing a linear regression comparing the overall ratings of players from different countries.
+
+```{r country_linear_regression}
+
+country_ovr_fit <- lm(Overall~Nationality, data = country_filter_df)
+broom::tidy(country_ovr_fit)
+
+```
+
+Here, Algeria is used as the baseline against which all other countries in the subset are compared. Algeria has an average overall rating of 70.63, under the estimate of the intercept, while all the other countries in the subset have a lower average overall rating because their estimates are negative. Therefore, the average overall rating of players from Argentina, for example, is 70.63 - 2.06 = 68.57. The difference in overall rating among countries is statistically significant for all countries except Honduras, Serbia, and Spain, as the p-values for each of these countries are greater than the alpha value of 0.05. What these countries have in common is that they have peaks in the distribution close to that of Algeria, or as is the case in Honduras, there may not be enough players from that country to get a normal distribution of datapoints for that country. Even though this may seem like an accurate measure for how competitive each country is in soccer, we must take into account that on the international teams, only 11 players may be on the field at the same time, so we will look into modifying this assessment later.
+
+
+2.3: Club Affiliation
+
+Better players are also more likely to play for the elite clubs of the world. So, it would make sense to also account for the club to which the player belongs.
+
+```{r eliteClubPlayers_plot, message=FALSE}
+
+library(scales)
+
+fifa_df %>%
+  filter(Overall >= 85) %>%
+  group_by(Club) %>%
+  summarize(numPlayers = n()) %>%
+  filter(numPlayers >= 3) %>%
+  ggplot(aes(x=factor(Club), y=numPlayers)) + geom_bar(stat = "identity") +
+    labs(title="Clubs with 3+ Elite Players", x="club", y="num players >= 85") +
+    theme(axis.text.x = element_text(angle = 90)) +
+    scale_y_continuous(breaks= pretty_breaks(5))
+
+```
+
+From this bar graph we can see which clubs have three or more players with a rating of 85 or better, which I deem to be "elite" players. Obviously, the more elite players a team has, the better that team is, at least on paper. These teams likely have higher standards for the rest of the players on their team, which means that the non-elite players on their roster will likely still be somewhat competitive when compared to the players with a rating of 85 or above. So, by plotting out which teams have at least three elite players, we get an idea of which clubs are the most competitive and that most likely players that belong to one of these teams will have a higher rating than players who do not belong to any of this subset of clubs. Although my standard for "elite" players and the number necessary to make that club an "elite" club are quite arbitrary, I believe it is still an effective way to show which teams are the most relevant in the professional soccer world.
+
+
+3. Missing Values
+
+As we saw before, there are some missing heights in the dataset, so let's find out how many entities are missing height information and if there are other important attributes for which we are also missing data.
+
+```{r check_missing_data}
+
+sum(is.na(fifa_df$Height))
+sum(is.na(fifa_df$Overall))
+sum(is.na(fifa_df$Nationality))
+
+```
+
+
+Here, we can see that we are missing data for 48 players' heights in the dataset. Since it is difficult to predict a person's height based on their playing ability, we will come up with a way of correcting this missingness by filling in the "NA" entries with a reasonable height value. We could use the average height of players of that specific player's nationality, but obviously not everyone is "average," so instead we will build a model to predict the missing height values. Let's also reduce the dataset to just the attributes that we really care about and that we are going to use to do our prediction.
+
+```{r fill_missing_data}
+
+library(mice)
+
+# reduce the dataframe
+reduced_df <- select(fifa_df, Name, Age, Nationality, Overall, Club, Height = height_in) 
+
+# include the factors that may have influence on height as factors
+factor_vars <- c('Nationality','Overall')
+# apply the factors as a function to the predictor
+reduced_df[factor_vars] <- lapply(reduced_df[factor_vars], function(x) as.factor(x))
+
+# Set a random seed
+set.seed(1234)
+
+# Perform mice imputation using mean of factors to compute predictions
+# The logical_matrix indicates which columns to include in the imputation, which we
+# only want to include the Height
+mice_imputes <- mice(reduced_df, method="pmm") 
+imputed_df = complete(mice_imputes,5)
+mice_imputes$imp$Height
+# fill in the missing heights by copying over the imputed values
+reduced_df$Height <- imputed_df$Height
+
+```
+
+The output here is the player's id on the left and each player has five possible heights generated for them using the model and their resulting height is the average of these outputs. Now we can plot some graphs and see how the imputed values stack up against the observed values in the dataset.
+
+```{r imputedVals_plots, warning = FALSE}
+
+xyplot(mice_imputes, Height ~ Overall | .imp, pch = 20, cex = 1.4)
+densityplot(mice_imputes)
+
+```
+
+The red dots or red lines represent the imputed values, while the blue dots/lines represent the observed values. Based on these plots, we see that the model does a pretty good job of predicting the heights of players based on the observed values, as the red line follows the trend of the blue line in the density plot quite closely. And we can see from the xy plot of Height vs. Overall rating that the players missing height information all had roughly the same overall rating, which is an interesting observation. We also have missing data for clubs, but that is okay, as some players in the game would be expected to not belong to a club, even though they may play internationally for their national team. Values for clubs were not imputed, which is good because we don't want to assign players to teams to which they do not belong.
+
+
+4. Classification
+
+In order to get a better idea of the caliber of certain clubs and national teams, we will classify them based on the average overall rating of the teams. For clubs, a good way to classify them will be to take the average overall score of all of the members of the club because there is a small number of roster spots. For international teams, however, I will take the top 11 players of that nationality and average their overall scores because there may be a lot of players from that country, and as previously mentioned, there can only be 11 players on the field at a time in a match.
+
+```{r classifying_clubs_nations}
+
+# convert from factor to numeric
+reduced_df$Overall <- as.numeric(as.character(reduced_df$Overall))
+# create a new dataframe with the average of all players of each club
+club_avg_df <-
+reduced_df %>%
+  group_by(Club) %>%
+  summarize(Club_avg=mean(Overall)) %>%
+  mutate(Club_avg)
+
+# join the two dataframes on Club, so the reduced_df now includes each players' team average
+reduced_df <-
+reduced_df %>%
+  left_join(club_avg_df, by="Club")
+
+# create a new dataframe with the average of the top 11 players of each nationality
+nation_avg_df <-
+reduced_df %>%
+  group_by(Nationality) %>%
+  arrange(desc(Overall)) %>%
+  slice(1:11) %>%
+  summarize(Nation_avg=mean(Overall))
+
+# join the two dataframes on Nationality, so the reduced_df now includes
+# each players' national average (of top 11)
+reduced_df <-
+reduced_df %>%
+  left_join(nation_avg_df, by="Nationality")
+reduced_df
+
+
+```
+
+Now we have one single dataframe that contains three numeric values that we will use to predict each players' overall rating.
+
+
+5. Prediction
+
+```{r prediction}
+
+library('randomForest')
+
+# set seed to get the same split of the data
+set.seed(123)
+# total number of rows in data
+numRows <- nrow(reduced_df)
+# 70% of rows for training, 30% for testing
+ntrain <- floor(0.7 * numRows) 
+ntest <- floor(0.3* numRows)
+index <- seq(1:numRows)
+# training dataset, and test dataset
+trainIndex <- sample(index, ntrain) 
+testIndex <- index[-trainIndex]
+ 
+train <- reduced_df[trainIndex,]
+test <- reduced_df[testIndex,]
+
+# generate the model using training data, using the three factors explored above
+ovr_model <- randomForest(Overall ~ Height + Club_avg + Nation_avg, data=train)
+
+# Show model error
+plot(ovr_model, main = "Error in predicting players' overall rating")
+
+
+```
+
+As we can see, the error rate falls as the number of trees in the random forest increases, but it plateaus around a value of 29, which means that this must be the mean squared error corresponding to the number of trees used in the random forest. This means that the average overall rating prediction for a player is about sqrt(29) or roughly 5.4 points away from the actual overall rating for that player. 
+
+```{r histogram_plot}
+
+hist(reduced_df$Overall, main='Overall true dataset', col='green')
+hist(ovr_model$predicted, main='Overall predicted', col='red')
+
+
+```
+
+Based on these histograms, we can see that the distribution of the prediction roughly follows the distribution of the actual dataset. Based on these histograms and the plot of error above, we can conclude that the random forest approach with the three factors I included (height, club average, top 11 nation average) is not great at making predictions, but it is not too far off. I suspect that the prediction would have been much more accurate if attributes such as each players' skill at each position, and their mastery of various different aspects of soccer, such as ball control, passing, and finishing, had been included in the prediction model.
+
+
+
+
